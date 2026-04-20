@@ -144,5 +144,4 @@ Encourage user to buy or go to WhatsApp.
 
 app.listen(3000, () => {
   console.log("AI Server running on 3000 🚀");
->>>>>>> 76d3e999c0f0bad9972ea12822bc9c6d460a4316
 });
