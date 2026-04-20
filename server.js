@@ -1,30 +1,41 @@
-
 require('dotenv').config();
 
 const express = require("express");
 const cors = require("cors");
 const OpenAI = require("openai");
+const axios = require("axios");
 
 const app = express();
 app.use(express.json());
 app.use(cors());
 
-
-// 🔑 API ها
+// ✅ OpenAI
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
+// ✅ WooCommerce API
 const WC_URL = "https://btbeasy.com/wp-json/wc/v3/products";
-const CK = "ck_68a06bbbef12b008a74af9278b500c3cd500344f";
-const CS = "cs_6b6e6f655a74659d1b42e51118fd30b12d3728c0";
 
-// 📩 مسیر چت
+// ⚠️ اینا رو بعدا ببر داخل .env (فعلا تست ok)
+const CK = process.env.WC_CK;
+const CS = process.env.WC_CS;
+
+// ✅ Health check
+app.get("/", (req, res) => {
+  res.send("AI Bot is running 🚀");
+});
+
+// ✅ Chat API
 app.post("/chat", async (req, res) => {
   try {
     const userMessage = req.body.message;
 
-    // 1️⃣ گرفتن محصولات از ووکامرس
+    if (!userMessage) {
+      return res.status(400).json({ error: "Message is required" });
+    }
+
+    // 🛒 گرفتن محصولات
     const response = await axios.get(WC_URL, {
       params: {
         consumer_key: CK,
@@ -35,26 +46,24 @@ app.post("/chat", async (req, res) => {
 
     const products = response.data;
 
-    // 2️⃣ خلاصه محصولات
     const productList = products.map(p =>
       `${p.name} - ${p.price} AED`
     ).join("\n");
 
-    // 3️⃣ درخواست به AI
+    // 🤖 OpenAI
     const ai = await openai.chat.completions.create({
       model: "gpt-4.1-mini",
       messages: [
         {
           role: "system",
-          content: `
-You are a sales assistant for an electronics store in Dubai.
-Recommend products with price and short benefits.
-Encourage user to buy or go to WhatsApp.
-          `
+          content: `You are a professional sales assistant for an electronics store in Dubai.
+Always recommend products clearly with price.
+Keep answers short and persuasive.
+Encourage user to buy or contact on WhatsApp.`
         },
         {
           role: "user",
-          content: `User: ${userMessage}\nProducts:\n${productList}`
+          content: `User: ${userMessage}\n\nProducts:\n${productList}`
         }
       ]
     });
@@ -64,84 +73,14 @@ Encourage user to buy or go to WhatsApp.
     res.json({ reply });
 
   } catch (err) {
-    console.log(err);
-    res.status(500).json({ error: "error" });
+    console.error("ERROR:", err.message);
+    res.status(500).json({ error: "Server error" });
   }
 });
 
-app.listen(3000, () => {
-  console.log("AI Server running on 3000 🚀");
-=======
-require('dotenv').config();
+// ✅ Port
+const PORT = process.env.PORT || 3000;
 
-const express = require("express");
-const cors = require("cors");
-const OpenAI = require("openai");
-
-const app = express();
-app.use(express.json());
-app.use(cors());
-
-
-// 🔑 API ها
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
-
-const WC_URL = "https://btbeasy.com/wp-json/wc/v3/products";
-const CK = "ck_68a06bbbef12b008a74af9278b500c3cd500344f";
-const CS = "cs_6b6e6f655a74659d1b42e51118fd30b12d3728c0";
-
-// 📩 مسیر چت
-app.post("/chat", async (req, res) => {
-  try {
-    const userMessage = req.body.message;
-
-    // 1️⃣ گرفتن محصولات از ووکامرس
-    const response = await axios.get(WC_URL, {
-      params: {
-        consumer_key: CK,
-        consumer_secret: CS,
-        per_page: 5
-      }
-    });
-
-    const products = response.data;
-
-    // 2️⃣ خلاصه محصولات
-    const productList = products.map(p =>
-      `${p.name} - ${p.price} AED`
-    ).join("\n");
-
-    // 3️⃣ درخواست به AI
-    const ai = await openai.chat.completions.create({
-      model: "gpt-4.1-mini",
-      messages: [
-        {
-          role: "system",
-          content: `
-You are a sales assistant for an electronics store in Dubai.
-Recommend products with price and short benefits.
-Encourage user to buy or go to WhatsApp.
-          `
-        },
-        {
-          role: "user",
-          content: `User: ${userMessage}\nProducts:\n${productList}`
-        }
-      ]
-    });
-
-    const reply = ai.choices[0].message.content;
-
-    res.json({ reply });
-
-  } catch (err) {
-    console.log(err);
-    res.status(500).json({ error: "error" });
-  }
-});
-
-app.listen(3000, () => {
-  console.log("AI Server running on 3000 🚀");
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT} 🚀`);
 });
