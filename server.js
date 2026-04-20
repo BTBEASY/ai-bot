@@ -75,10 +75,11 @@ Encourage user to buy or contact on WhatsApp.`
     res.json({ reply });
 
   } catch (err) {
-    console.error("ERROR:", err.message);
-    res.status(500).json({ error: "Server error" });
-  }
-});
+  console.log("ERROR:", err.response?.data || err.message);
+  res.status(500).json({
+    error: err.response?.data || err.message
+  });
+}
 
 // ✅ Port
 const PORT = process.env.PORT || 3000;
