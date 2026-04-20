@@ -20,6 +20,8 @@ const WC_URL = "https://btbeasy.com/wp-json/wc/v3/products";
 // ⚠️ اینا رو بعدا ببر داخل .env (فعلا تست ok)
 const CK = process.env.WC_CK;
 const CS = process.env.WC_CS;
+console.log("CK:", CK);
+console.log("CS:", CS);
 
 // ✅ Health check
 app.get("/", (req, res) => {
