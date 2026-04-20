@@ -75,7 +75,8 @@ Encourage user to buy or contact on WhatsApp.`
     res.json({ reply });
 
   } catch (err) {
-  console.log("ERROR:", err.response?.data || err.message);
+  console.log("ERROR FULL:", err.response?.data || err.message);
+
   res.status(500).json({
     error: err.response?.data || err.message
   });
