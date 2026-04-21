@@ -1,5 +1,5 @@
 require('dotenv').config();
-
+let conversations = {};
 const express = require("express");
 const cors = require("cors");
 const axios = require("axios");
@@ -28,6 +28,16 @@ app.get("/", (req, res) => {
 app.post("/chat", async (req, res) => {
   try {
     const userMessage = req.body.message;
+    const userId = req.body.userId || "default";
+
+if (!conversations[userId]) {
+  conversations[userId] = [];
+}
+
+conversations[userId].push({
+  role: "user",
+  content: userMessage
+});
 
     // گرفتن محصولات
     const wcRes = await axios.get(WC_URL, {
@@ -70,9 +80,15 @@ ${productList}
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }]
+      messages: [
+  { role: "system", content: prompt },
+  ...conversations[userId]
+]
     });
-
+conversations[userId].push({
+  role: "assistant",
+  content: completion.choices[0].message.content
+});
    res.json({
   reply: completion.choices[0].message.content,
  products: products.map(p => ({
