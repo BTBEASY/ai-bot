@@ -40,7 +40,13 @@ app.post("/chat", async (req, res) => {
     const products = wcRes.data.slice(0, 10); // فقط 10 تا
 
     // ساخت prompt
-    const productList = products.map(p => p.name).join("\n");
+    const productList = products.map(p => {
+  return `
+Name: ${p.name}
+Price: ${p.price}
+Link: ${p.permalink}
+`;
+}).join("\n");
 
     const prompt = `
 User wants: ${userMessage}
