@@ -106,6 +106,17 @@ Important:
 - Focus on helping user decide fast
 - Your goal is to convert user into buyer
 
+IMPORTANT OUTPUT RULE:
+
+- If user is just greeting or unclear → DO NOT suggest products
+- If user shows interest, budget, or asks about products → suggest products
+
+- Also decide internally:
+  showProducts = true or false
+
+- If NOT ready → just talk, ask questions
+- If READY → suggest max 2 products
+
 
 Available products:
 ${smartProductList}
@@ -116,22 +127,27 @@ ${smartProductList}
   { role: "system", content: prompt },
   ...conversations[userId]
 ]
+      const aiText = completion.choices[0].message.content;
+
+const showProducts =
+  /recommend|suggest|option|perfect|best|good choice/i.test(aiText);
     });
 conversations[userId].push({
   role: "assistant",
   content: completion.choices[0].message.content
 });
-   res.json({
-  reply: completion.choices[0].message.content,
- products: products.map(p => ({
-  name: p.name,
-  price: p.price || p.regular_price || p.sale_price || "N/A",
-  link: p.permalink,
-  image: (p.images && p.images[0] && p.images[0].src)
-    ? p.images[0].src
-    : "https://via.placeholder.com/80"
-}))
-});
+ res.json({
+      reply: aiText,
+      showProducts: showProducts,
+      products: products.map(p => ({
+        name: p.name,
+        price: p.price || p.regular_price || p.sale_price || "",
+        link: p.permalink,
+        image: (p.images && p.images[0] && p.images[0].src)
+          ? p.images[0].src
+          : "https://via.placeholder.com/80"
+      }))
+    });
 
   } catch (err) {
     console.error("ERROR:", err.message);
