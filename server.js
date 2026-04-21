@@ -48,13 +48,17 @@ Link: ${p.permalink}
 `;
 }).join("\n");
 
-    const prompt = `
-User wants: ${userMessage}
+  const prompt = `
+User request: ${userMessage}
 
-Here are products:
+Products:
 ${productList}
 
-Suggest best options.
+Instructions:
+- Recommend best products
+- Include price
+- Include purchase link
+- Keep it short and clear
 `;
 
     const completion = await openai.chat.completions.create({
