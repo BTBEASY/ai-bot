@@ -28,6 +28,7 @@ app.get("/", (req, res) => {
 app.post("/chat", async (req, res) => {
   try {
     const userMessage = req.body.message;
+    const isBuyingIntent = /laptop|gaming|buy|price|budget|lenovo|hp|pc|computer/i.test(userMessage);
     const userId = req.body.userId || "default";
 
 if (!conversations[userId]) {
