@@ -66,9 +66,14 @@ Instructions:
       messages: [{ role: "user", content: prompt }]
     });
 
-    res.json({
-      reply: completion.choices[0].message.content
-    });
+   res.json({
+  reply: completion.choices[0].message.content,
+  products: products.map(p => ({
+    name: p.name,
+    price: p.price,
+    link: p.permalink
+  }))
+});
 
   } catch (err) {
     console.error("ERROR:", err.message);
