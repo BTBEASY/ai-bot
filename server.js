@@ -68,11 +68,11 @@ Instructions:
 
    res.json({
   reply: completion.choices[0].message.content,
-  products: products.map(p => ({
-    name: p.name,
-    price: p.price,
-    link: p.permalink
-  }))
+ products: products.map(p => ({
+  name: p.name,
+  price: p.price || p.regular_price || p.sale_price || "N/A",
+  link: p.permalink
+}))
 });
 
   } catch (err) {
