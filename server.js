@@ -126,7 +126,10 @@ conversations[userId].push({
  products: products.map(p => ({
   name: p.name,
   price: p.price || p.regular_price || p.sale_price || "N/A",
-  link: p.permalink
+  link: p.permalink,
+  image: (p.images && p.images[0] && p.images[0].src)
+    ? p.images[0].src
+    : "https://via.placeholder.com/80"
 }))
 });
 
