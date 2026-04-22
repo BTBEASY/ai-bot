@@ -136,12 +136,42 @@ const aiSuggesting = /recommend|suggest|option|perfect|best|good choice/i.test(a
 
 const showProducts = buyingIntent || aiSuggesting;
 
-// ✅ اینجا اضافه کن
-let finalProducts = products;
+// 👇 گرفتن آخرین پیام کاربر
+const userMessage = conversations[userId].slice(-1)[0].content.toLowerCase();
 
-if (buyingIntent) {
-  finalProducts = products.slice(0, 2);
-}
+// 👇 کلمات کلیدی
+const keywords = userMessage.split(" ");
+
+// 👇 امتیاز دادن به محصولات
+let scoredProducts = products.map(p => {
+  let score = 0;
+  const name = (p.name || "").toLowerCase();
+
+  keywords.forEach(k => {
+    if (name.includes(k)) score += 2;
+  });
+
+  // boost هوشمند
+  if (/laptop|gaming/.test(userMessage) && /laptop|gaming/.test(name)) {
+    score += 5;
+  }
+
+  if (/monitor/.test(userMessage) && /monitor|display/.test(name)) {
+    score += 5;
+  }
+
+  if (/keyboard|mouse|accessory/.test(userMessage) && /keyboard|mouse|usb|accessory/.test(name)) {
+    score += 5;
+  }
+
+  return { ...p, score };
+});
+
+// 👇 مرتب سازی
+scoredProducts.sort((a, b) => b.score - a.score);
+
+// 👇 فقط مرتبط‌ها
+let finalProducts = scoredProducts.slice(0, 3);
 
 conversations[userId].push({
   role: "assistant",
