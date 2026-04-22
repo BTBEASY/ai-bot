@@ -9,97 +9,125 @@ const app = express();
 app.use(express.json({ limit: "1mb" }));
 app.use(cors());
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
-
 const PORT = process.env.PORT || 10000;
+const SITE_URL = process.env.SITE_URL || "https://btbeasy.com";
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
 
-const SITE_URL = process.env.SITE_URL || "https://btbeasy.com";
-const WC_BASE = `${SITE_URL}/wp-json/wc/v3/products`;
+const WC_BASE_URL = `${SITE_URL}/wp-json/wc/v3/products`;
 const WP_PAGES_API = `${SITE_URL}/wp-json/wp/v2/pages`;
 const WP_POSTS_API = `${SITE_URL}/wp-json/wp/v2/posts`;
 
 const CK = process.env.WC_CK;
 const CS = process.env.WC_CS;
 
-const conversations = {};
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
 
-function detectLanguage(text = "") {
-  const arabicRegex = /[\u0600-\u06FF]/;
-  return arabicRegex.test(text) ? "ar" : "en";
-}
+const conversations = Object.create(null);
 
 function normalizeText(text = "") {
-  return text.toLowerCase().trim();
+  return String(text).toLowerCase().trim();
 }
 
-function extractBudget(text = "") {
-  const match = text.match(/(\$|aed|dh|dirham|usd)?\s?(\d{2,6})/i);
-  if (!match) return null;
-  return Number(match[2]);
+function containsArabic(text = "") {
+  return /[\u0600-\u06FF]/.test(text);
 }
 
-function detectBuyingIntent(text = "") {
-  return /buy|purchase|price|cost|quote|deal|recommend|suggest|best|need|looking for|interested|order|laptop|pc|computer|monitor|server|printer|network|storage|lenovo|hp|dell|asus|gaming/i.test(
-    text
-  );
-}
-
-function extractCategory(text = "") {
-  const t = normalizeText(text);
-
-  if (/laptop|notebook|ultrabook|macbook/i.test(t)) return "laptop";
-  if (/desktop|pc|computer|workstation/i.test(t)) return "desktop";
-  if (/monitor|display|screen/i.test(t)) return "monitor";
-  if (/keyboard/i.test(t)) return "keyboard";
-  if (/mouse/i.test(t)) return "mouse";
-  if (/printer/i.test(t)) return "printer";
-  if (/server|rack server|tower server/i.test(t)) return "server";
-  if (/storage|ssd|hdd|nas/i.test(t)) return "storage";
-  if (/network|router|switch|wifi|access point/i.test(t)) return "network";
-
-  return null;
-}
-
-function extractBrand(text = "") {
-  const brands = [
-    "lenovo",
-    "hp",
-    "dell",
-    "asus",
-    "acer",
-    "msi",
-    "apple",
-    "canon",
-    "epson",
-    "logitech"
-  ];
-
-  const t = normalizeText(text);
-  return brands.find((brand) => t.includes(brand)) || null;
+function detectLanguage(text = "") {
+  return containsArabic(text) ? "ar" : "en";
 }
 
 function stripHtml(html = "") {
-  return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  return String(html).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function keepRecentMessages(history = [], maxItems = 12) {
   return history.slice(-maxItems);
 }
 
-async function fetchProducts(searchText = "") {
+function extractBudget(text = "") {
+  const cleaned = text.replace(/,/g, "");
+  const match = cleaned.match(/(?:aed|dhs?|dirhams?|usd|\$)?\s*(\d{2,6})/i);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function detectBuyingIntent(text = "") {
+  const t = normalizeText(text);
+  return /buy|purchase|price|cost|quote|deal|recommend|suggest|best|need|looking for|interested|order|laptop|pc|computer|monitor|server|printer|network|storage|gaming|business|office/i.test(t);
+}
+
+function detectDeclineIntent(text = "") {
+  const t = normalizeText(text);
+  return /no need|not now|later|maybe later|stop|enough|no thanks|thanks|thank you|i'm good|not interested/i.test(t);
+}
+
+function extractBrand(text = "") {
+  const t = normalizeText(text);
+  const brands = [
+    "lenovo",
+    "hp",
+    "dell",
+    "acer",
+    "asus",
+    "msi",
+    "apple",
+    "samsung",
+    "lg",
+    "canon",
+    "epson",
+    "logitech"
+  ];
+
+  return brands.find((brand) => t.includes(brand)) || null;
+}
+
+function extractCategory(text = "") {
+  const t = normalizeText(text);
+
+  if (/laptop|notebook|ultrabook|macbook/.test(t)) return "laptop";
+  if (/gaming laptop|gaming notebook/.test(t)) return "gaming laptop";
+  if (/business laptop|office laptop/.test(t)) return "business laptop";
+  if (/desktop|pc|computer|workstation/.test(t)) return "desktop";
+  if (/monitor|display|screen/.test(t)) return "monitor";
+  if (/keyboard/.test(t)) return "keyboard";
+  if (/mouse/.test(t)) return "mouse";
+  if (/printer/.test(t)) return "printer";
+  if (/server/.test(t)) return "server";
+  if (/ssd|hdd|storage|nas/.test(t)) return "storage";
+  if (/router|switch|wifi|network|access point/.test(t)) return "network";
+
+  return null;
+}
+
+function extractUseCase(text = "") {
+  const t = normalizeText(text);
+
+  if (/gaming|game|esports/.test(t)) return "gaming";
+  if (/business|office|work|company/.test(t)) return "business";
+  if (/design|editing|render|video|graphics/.test(t)) return "creative";
+  if (/student|study|school|college/.test(t)) return "student";
+
+  return null;
+}
+
+function getFallbackImage() {
+  return "https://via.placeholder.com/120?text=Product";
+}
+
+async function fetchProducts(search = "") {
   const params = {
     per_page: 50,
     status: "publish"
   };
 
-  if (searchText && searchText.trim()) {
-    params.search = searchText.trim();
+  if (search && search.trim()) {
+    params.search = search.trim();
   }
 
-  const response = await axios.get(WC_BASE, {
+  const response = await axios.get(WC_BASE_URL, {
     params,
     auth: {
       username: CK,
@@ -127,135 +155,214 @@ async function fetchSiteKnowledge() {
     const pages = Array.isArray(pagesRes.data) ? pagesRes.data : [];
     const posts = Array.isArray(postsRes.data) ? postsRes.data : [];
 
-    const pageText = pages
-      .map((p) => {
-        const title = p?.title?.rendered || "";
-        const excerpt = stripHtml(p?.excerpt?.rendered || "");
-        const link = p?.link || "";
-        return `Page: ${title}\nSummary: ${excerpt}\nLink: ${link}`;
-      })
-      .join("\n\n");
+    const pageText = pages.map((item) => {
+      const title = item?.title?.rendered || "";
+      const excerpt = stripHtml(item?.excerpt?.rendered || "");
+      return `Page: ${title}\nSummary: ${excerpt}\nLink: ${item?.link || ""}`;
+    }).join("\n\n");
 
-    const postText = posts
-      .map((p) => {
-        const title = p?.title?.rendered || "";
-        const excerpt = stripHtml(p?.excerpt?.rendered || "");
-        const link = p?.link || "";
-        return `Post: ${title}\nSummary: ${excerpt}\nLink: ${link}`;
-      })
-      .join("\n\n");
+    const postText = posts.map((item) => {
+      const title = item?.title?.rendered || "";
+      const excerpt = stripHtml(item?.excerpt?.rendered || "");
+      return `Post: ${title}\nSummary: ${excerpt}\nLink: ${item?.link || ""}`;
+    }).join("\n\n");
 
-    return `${pageText}\n\n${postText}`.trim();
+    return [pageText, postText].filter(Boolean).join("\n\n");
   } catch (error) {
     return "";
   }
 }
 
+function buildSearchQuery(userMessage, category, brand, useCase) {
+  return [userMessage, category, brand, useCase].filter(Boolean).join(" ");
+}
+
 function scoreProducts(products, userMessage) {
   const text = normalizeText(userMessage);
   const words = text.split(/\s+/).filter(Boolean);
+  const budget = extractBudget(text);
   const category = extractCategory(text);
   const brand = extractBrand(text);
-  const budget = extractBudget(text);
+  const useCase = extractUseCase(text);
 
-  return products
-    .map((p) => {
-      let score = 0;
+  return products.map((product) => {
+    let score = 0;
 
-      const name = normalizeText(p.name || "");
-      const shortDesc = normalizeText(stripHtml(p.short_description || ""));
-      const price = Number(p.price || p.regular_price || 0);
+    const name = normalizeText(product.name || "");
+    const desc = normalizeText(stripHtml(product.short_description || ""));
+    const categories = Array.isArray(product.categories)
+      ? product.categories.map((c) => normalizeText(c.name || "")).join(" ")
+      : "";
+    const combined = `${name} ${desc} ${categories}`;
 
-      words.forEach((word) => {
-        if (word.length > 2 && name.includes(word)) score += 3;
-        if (word.length > 2 && shortDesc.includes(word)) score += 1;
-      });
+    words.forEach((word) => {
+      if (word.length > 2 && combined.includes(word)) score += 2;
+    });
 
-      if (category && name.includes(category)) score += 8;
-      if (brand && name.includes(brand)) score += 8;
-
-      if (budget && price > 0) {
-        if (price <= budget) score += 6;
-        if (price > budget && price <= budget * 1.15) score += 2;
+    if (category) {
+      if (category === "gaming laptop") {
+        if (combined.includes("laptop")) score += 4;
+        if (combined.includes("gaming")) score += 8;
+      } else if (category === "business laptop") {
+        if (combined.includes("laptop")) score += 4;
+        if (combined.includes("business") || combined.includes("office")) score += 8;
+      } else if (combined.includes(category)) {
+        score += 8;
       }
+    }
 
-      if (p.stock_status === "instock") score += 2;
-      if (p.featured) score += 2;
+    if (brand && combined.includes(brand)) {
+      score += 8;
+    }
 
-      return { ...p, score };
-    })
-    .sort((a, b) => b.score - a.score);
+    if (useCase) {
+      if (useCase === "gaming" && /gaming|rtx|gtx|radeon|geforce/.test(combined)) score += 8;
+      if (useCase === "business" && /business|office|productivity|vostro|thinkpad|v15/.test(combined)) score += 8;
+      if (useCase === "creative" && /creator|design|graphics|rtx|oled/.test(combined)) score += 8;
+      if (useCase === "student" && /student|everyday|lightweight|portable/.test(combined)) score += 6;
+    }
+
+    const price = Number(product.price || product.regular_price || 0);
+    if (budget && price > 0) {
+      if (price <= budget) score += 6;
+      else if (price <= budget * 1.15) score += 2;
+      else score -= 2;
+    }
+
+    if (product.stock_status === "instock") score += 3;
+    if (product.featured) score += 2;
+
+    return {
+      ...product,
+      score
+    };
+  }).sort((a, b) => b.score - a.score);
 }
 
-function buildProductSummary(products = [], lang = "en") {
-  return products
-    .slice(0, 8)
-    .map((p) => {
-      const price = p.price || p.regular_price || "Contact for price";
-      return [
-        `Name: ${p.name || ""}`,
-        `Price: ${price}`,
-        `Stock: ${p.stock_status || "unknown"}`,
-        `Link: ${p.permalink || ""}`
-      ].join("\n");
-    })
-    .join("\n\n");
+function splitProductsByBudget(products, budget) {
+  if (!budget) {
+    return {
+      exact: products.filter((p) => p.score > 0),
+      near: []
+    };
+  }
+
+  const exact = [];
+  const near = [];
+
+  for (const product of products) {
+    const price = Number(product.price || product.regular_price || 0);
+    if (!price || product.score <= 0) continue;
+
+    if (price <= budget) {
+      exact.push(product);
+    } else if (price <= budget * 1.2) {
+      near.push(product);
+    }
+  }
+
+  return { exact, near };
 }
 
-function buildSystemPrompt({ lang, siteKnowledge, productSummary }) {
-  const isArabic = lang === "ar";
+function formatCatalogForPrompt(products = []) {
+  return products.slice(0, 4).map((p, index) => {
+    const price = p.price || p.regular_price || "N/A";
+    const stock = p.stock_status || "unknown";
+    const categories = Array.isArray(p.categories)
+      ? p.categories.map((c) => c.name).filter(Boolean).join(", ")
+      : "";
+
+    return [
+      `Store Product ${index + 1}:`,
+      `Name: ${p.name || ""}`,
+      `Price: ${price}`,
+      `Stock: ${stock}`,
+      `Categories: ${categories}`,
+      `Short Description: ${stripHtml(p.short_description || "")}`,
+      `Link: ${p.permalink || ""}`
+    ].join("\n");
+  }).join("\n\n");
+}
+
+function buildSystemPrompt({ lang, siteKnowledge, exactCatalog, nearCatalog, hasExact, hasNear }) {
+  const replyLanguage = lang === "ar" ? "Arabic" : "English";
 
   return `
 You are a professional AI sales assistant for BTB Easy, an electronics and technology store in the UAE.
 
-Your goal:
-- understand the customer's real need
-- recommend the best-fit product or solution
-- help the customer move toward purchase
-- stay concise, natural, and persuasive
-- never sound robotic
-
 Language rule:
-- Reply in ${isArabic ? "Arabic" : "English"}
-- If the customer writes in Arabic, reply in Arabic
-- If the customer writes in English, reply in English
+- Reply only in ${replyLanguage}
 
-Sales behavior:
-- Ask smart follow-up questions when the request is unclear
-- If the customer mentions budget, brand, or use case, use that directly
-- Recommend at most 2 products
-- Focus on value, fit, and confidence
-- If the customer sounds ready, encourage the next step
-- If no exact match is clear, say that you can help narrow it down
+Main goal:
+- Help the customer choose from our store catalog only
+- Never recommend outside products
+- Never invent model names, prices, links, specifications, brands, or availability
 
-Formatting rule:
-- Keep replies short and clean
-- No raw JSON
-- No long technical dumps
-- End with a helpful question or a clear next step
+Critical catalog rules:
+- You may only refer to products that appear in the provided store catalog
+- If there is no exact match in the exact-match catalog, say that clearly and apologize briefly
+- If near alternatives are available, offer those from our store only
+- If nothing suitable is available, say so honestly and ask whether the customer wants another category, brand, or budget
+- If the customer declines or says they do not need more help, stop recommending products
 
-Important:
-- Do not invent products that are not in the product list
-- Do not claim unavailable specs unless clearly present
-- If product info is limited, be honest and recommend based on available data
-- If the user is only greeting, greet back and ask what they need
-- Do not push products too early if intent is unclear
+Chat output rules:
+- Keep your reply short
+- Do not include raw links
+- Do not include markdown bullet lists
+- Do not list detailed specs
+- Do not print product names unless they exist in the provided catalog
+- If exact-match products exist, say you found a few suitable options from our store
+- If only near alternatives exist, apologize briefly and say you found a few nearby options from our store
+- If no products exist, apologize and ask one short follow-up question
+- Let the UI display the product cards
 
-Critical catalog rule:
-- Never invent or mention any product, model, brand, price, or specification unless it exists in the provided store product list.
-- If no exact match exists in the provided catalog, clearly say so.
-- In that case, only offer nearby alternatives from the provided catalog.
-- Never recommend outside products.
-- Never continue pushing products after the customer declines.
-- If the customer says "no need", "not now", "later", or similar, politely stop recommending products.
-
+Behavior:
+- Be natural, concise, and sales-helpful
+- Ask at most one short follow-up question when needed
+- Never contradict the store catalog
+- Never mix categories
+- If the user asked for a laptop, do not talk about monitors unless you are explicitly offering a nearby alternative because no laptop match exists
 
 Site knowledge:
 ${siteKnowledge || "No extra site knowledge available."}
 
-Available products:
-${productSummary || "No product list available."}
+Exact-match catalog:
+${hasExact ? exactCatalog : "No exact-match store products found."}
+
+Nearby alternatives catalog:
+${hasNear ? nearCatalog : "No nearby alternative store products found."}
 `.trim();
+}
+
+function buildContextNote(currentPage, lang) {
+  if (!currentPage) return "";
+  return lang === "ar"
+    ? `العميل موجود حالياً في هذه الصفحة: ${currentPage}`
+    : `Customer is currently on this page: ${currentPage}`;
+}
+
+function buildNoMatchReply(lang) {
+  return lang === "ar"
+    ? "عذراً، لم أجد منتجاً مطابقاً تماماً في مخزوننا الحالي. إذا أردت، أستطيع أن أقترح أقرب الخيارات المتوفرة لدينا."
+    : "Sorry, I could not find an exact match in our current catalog. If you want, I can suggest the closest available options from our store.";
+}
+
+function buildNoProductReply(lang) {
+  return lang === "ar"
+    ? "عذراً، لا أرى حالياً منتجاً مناسباً في مخزوننا لهذا الطلب. هل تفضّل ميزانية مختلفة أو فئة أخرى؟"
+    : "Sorry, I do not currently see a suitable product in our store for that request. Would you like a different budget or another category?";
+}
+
+function mapProductsForClient(products = []) {
+  return products.slice(0, 2).map((p) => ({
+    id: p.id,
+    name: p.name || "",
+    price: p.price || p.regular_price || "",
+    currency: p.currency || "",
+    link: p.permalink || "",
+    image: p.images && p.images[0] && p.images[0].src ? p.images[0].src : getFallbackImage(),
+    stockStatus: p.stock_status || "unknown"
+  }));
 }
 
 app.get("/", (req, res) => {
@@ -264,19 +371,21 @@ app.get("/", (req, res) => {
 
 app.post("/chat", async (req, res) => {
   try {
-    const userMessage = (req.body.message || "").trim();
-    const userId = (req.body.userId || "default").toString();
-    const currentPage = (req.body.currentPage || "").toString();
+    const userMessage = String(req.body.message || "").trim();
+    const userId = String(req.body.userId || "default");
+    const currentPage = String(req.body.currentPage || "").trim();
 
     if (!userMessage) {
       return res.status(400).json({ error: "Message is required" });
     }
 
     const lang = detectLanguage(userMessage);
-    const buyingIntent = detectBuyingIntent(userMessage);
-    const budget = extractBudget(userMessage);
     const category = extractCategory(userMessage);
     const brand = extractBrand(userMessage);
+    const useCase = extractUseCase(userMessage);
+    const budget = extractBudget(userMessage);
+    const declineIntent = detectDeclineIntent(userMessage);
+    const buyingIntent = detectBuyingIntent(userMessage);
 
     if (!conversations[userId]) {
       conversations[userId] = [];
@@ -289,8 +398,25 @@ app.post("/chat", async (req, res) => {
 
     conversations[userId] = keepRecentMessages(conversations[userId], 12);
 
-    const searchQueryParts = [userMessage, category, brand].filter(Boolean);
-    const searchQuery = searchQueryParts.join(" ");
+    if (declineIntent) {
+      const declineReply = lang === "ar"
+        ? "بكل سرور. إذا احتجت أي مساعدة لاحقاً، أنا هنا."
+        : "Of course. If you need anything later, I am here to help.";
+
+      conversations[userId].push({
+        role: "assistant",
+        content: declineReply
+      });
+
+      return res.json({
+        reply: declineReply,
+        language: lang,
+        showProducts: false,
+        products: []
+      });
+    }
+
+    const searchQuery = buildSearchQuery(userMessage, category, brand, useCase);
 
     const [products, siteKnowledge] = await Promise.all([
       fetchProducts(searchQuery),
@@ -298,36 +424,62 @@ app.post("/chat", async (req, res) => {
     ]);
 
     const scoredProducts = scoreProducts(products, userMessage);
-    const suggestedProducts = scoredProducts.slice(0, 2);
-    const productSummary = buildProductSummary(suggestedProducts, lang);
+    const { exact, near } = splitProductsByBudget(scoredProducts, budget);
 
-    const systemPrompt = buildSystemPrompt({
-      lang,
-      siteKnowledge,
-      productSummary
-    });
+    const exactProducts = exact.slice(0, 2);
+    const nearProducts = near.slice(0, 2);
 
-    const contextNote = currentPage
-      ? lang === "ar"
-        ? `العميل حالياً في هذه الصفحة: ${currentPage}`
-        : `Customer is currently on this page: ${currentPage}`
-      : "";
+    const hasExact = exactProducts.length > 0;
+    const hasNear = nearProducts.length > 0;
 
-    const aiResponse = await openai.chat.completions.create({
-      model: OPENAI_MODEL,
-      temperature: 0.7,
-      messages: [
-        { role: "system", content: systemPrompt },
-        ...(contextNote ? [{ role: "system", content: contextNote }] : []),
-        ...conversations[userId]
-      ]
-    });
+    const chosenProducts = hasExact ? exactProducts : nearProducts;
 
-    const reply =
-      aiResponse?.choices?.[0]?.message?.content ||
-      (lang === "ar"
-        ? "أستطيع مساعدتك في اختيار المنتج المناسب. ما الذي تبحث عنه بالضبط؟"
-        : "I can help you choose the right product. What exactly are you looking for?");
+    let reply = "";
+    let showProducts = false;
+
+    if (!buyingIntent && !category && !brand && !budget && !useCase) {
+      reply = lang === "ar"
+        ? "أكيد، أستطيع مساعدتك. ما نوع المنتج الذي تبحث عنه؟"
+        : "Sure, I can help. What type of product are you looking for?";
+    } else if (!hasExact && !hasNear) {
+      reply = buildNoProductReply(lang);
+    } else {
+      const exactCatalog = formatCatalogForPrompt(exactProducts);
+      const nearCatalog = formatCatalogForPrompt(nearProducts);
+
+      const systemPrompt = buildSystemPrompt({
+        lang,
+        siteKnowledge,
+        exactCatalog,
+        nearCatalog,
+        hasExact,
+        hasNear
+      });
+
+      const contextNote = buildContextNote(currentPage, lang);
+
+      const aiResponse = await openai.chat.completions.create({
+        model: OPENAI_MODEL,
+        temperature: 0.4,
+        messages: [
+          { role: "system", content: systemPrompt },
+          ...(contextNote ? [{ role: "system", content: contextNote }] : []),
+          ...conversations[userId]
+        ]
+      });
+
+      reply = aiResponse?.choices?.[0]?.message?.content?.trim() || "";
+
+      if (!reply) {
+        reply = hasExact
+          ? (lang === "ar"
+              ? "وجدت لك بعض الخيارات المناسبة من متجرنا."
+              : "I found a few suitable options from our store.")
+          : buildNoMatchReply(lang);
+      }
+
+      showProducts = chosenProducts.length > 0;
+    }
 
     conversations[userId].push({
       role: "assistant",
@@ -336,31 +488,18 @@ app.post("/chat", async (req, res) => {
 
     conversations[userId] = keepRecentMessages(conversations[userId], 12);
 
-    const showProducts = buyingIntent || !!category || !!brand || !!budget;
-
     res.json({
       reply,
       language: lang,
       showProducts,
-      products: suggestedProducts.map((p) => ({
-        id: p.id,
-        name: p.name,
-        price: p.price || p.regular_price || "",
-        currency: p.currency || "",
-        link: p.permalink,
-        image:
-          p.images && p.images[0] && p.images[0].src
-            ? p.images[0].src
-            : "https://via.placeholder.com/120",
-        stockStatus: p.stock_status || "unknown"
-      }))
+      products: showProducts ? mapProductsForClient(chosenProducts) : []
     });
-  } catch (err) {
-    console.error("CHAT ERROR:", err.response?.data || err.message);
+  } catch (error) {
+    console.error("CHAT ERROR:", error.response?.data || error.message);
 
     res.status(500).json({
       error: "Server error",
-      details: err.message
+      details: error.message
     });
   }
 });
