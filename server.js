@@ -121,28 +121,27 @@ IMPORTANT OUTPUT RULE:
 Available products:
 ${smartProductList}
 `;
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-  { role: "system", content: prompt },
-  ...conversations[userId]
-]
+ const completion = await openai.chat.completions.create({
+  model: "gpt-4o-mini",
+  messages: [
+    { role: "system", content: prompt },
+    ...conversations[userId]
+  ]
+});
+
+// ✅ متن AI
 const aiText = completion.choices[0].message.content;
 
-// ✅ اینجا اضافه کن
+// ✅ intent
 const buyingIntent = /buy|purchase|yes|ok|sure|interested/i.test(userMessage);
-
 const aiSuggesting = /recommend|suggest|option|perfect|best|good choice/i.test(aiText);
-
 const showProducts = buyingIntent || aiSuggesting;
 
-// 👇 گرفتن آخرین پیام کاربر
-const userMessage = conversations[userId].slice(-1)[0].content.toLowerCase();
+// ✅ کلمات کاربر
+const userMsgLower = userMessage.toLowerCase();
+const keywords = userMsgLower.split(" ");
 
-// 👇 کلمات کلیدی
-const keywords = userMessage.split(" ");
-
-// 👇 امتیاز دادن به محصولات
+// ✅ اسکور محصولات
 let scoredProducts = products.map(p => {
   let score = 0;
   const name = (p.name || "").toLowerCase();
@@ -151,33 +150,26 @@ let scoredProducts = products.map(p => {
     if (name.includes(k)) score += 2;
   });
 
-  // boost هوشمند
-  if (/laptop|gaming/.test(userMessage) && /laptop|gaming/.test(name)) {
-    score += 5;
-  }
-
-  if (/monitor/.test(userMessage) && /monitor|display/.test(name)) {
-    score += 5;
-  }
-
-  if (/keyboard|mouse|accessory/.test(userMessage) && /keyboard|mouse|usb|accessory/.test(name)) {
-    score += 5;
-  }
+  if (/laptop|gaming/.test(userMsgLower) && /laptop|gaming/.test(name)) score += 5;
+  if (/monitor/.test(userMsgLower) && /monitor|display/.test(name)) score += 5;
+  if (/keyboard|mouse|accessory/.test(userMsgLower) && /keyboard|mouse|usb/.test(name)) score += 5;
 
   return { ...p, score };
 });
 
-// 👇 مرتب سازی
+// ✅ مرتب سازی
 scoredProducts.sort((a, b) => b.score - a.score);
 
-// 👇 فقط مرتبط‌ها
+// ✅ انتخاب بهترین‌ها
 let finalProducts = scoredProducts.slice(0, 3);
 
+// ✅ ذخیره مکالمه
 conversations[userId].push({
   role: "assistant",
   content: aiText
 });
 
+// ✅ خروجی
 res.json({
   reply: aiText,
   showProducts: showProducts,
