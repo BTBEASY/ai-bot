@@ -86,11 +86,28 @@ function tokenize(text = "") {
     .filter((t) => t.length > 1);
 }
 
+function detectRequestedCategory(text = "") {
+  const t = normalizeText(text);
+
+  if (/monitor|display|screen/.test(t)) return "monitor";
+  if (/laptop|notebook|ultrabook|macbook/.test(t)) return "laptop";
+  if (/desktop|pc|computer|workstation/.test(t)) return "desktop";
+  if (/keyboard/.test(t)) return "keyboard";
+  if (/mouse/.test(t)) return "mouse";
+  if (/printer/.test(t)) return "printer";
+  if (/server/.test(t)) return "server";
+  if (/ssd|hdd|storage|nas/.test(t)) return "storage";
+  if (/router|switch|wifi|network|access point/.test(t)) return "network";
+
+  return null;
+}
+
 function parseUserFilters(text = "") {
   const raw = normalizeText(text);
   const tokens = tokenize(text);
   const budget = extractBudget(text);
   const exactModel = extractQuotedModel(text);
+  const requestedCategory = detectRequestedCategory(text);
 
   const knownBrands = [
     "hp", "dell", "lenovo", "acer", "asus", "msi", "apple",
@@ -121,6 +138,7 @@ function parseUserFilters(text = "") {
     budget,
     brand,
     exactModel,
+    requestedCategory,
     sizes: sizeMatches,
     refreshRates: refreshMatches,
     ram: ramMatches,
@@ -193,6 +211,27 @@ function productText(product) {
   ].join(" "));
 }
 
+function productMatchesCategory(product, requestedCategory) {
+  if (!requestedCategory) return true;
+
+  const haystack = productText(product);
+
+  const categoryMap = {
+    monitor: ["monitor", "display", "screen"],
+    laptop: ["laptop", "notebook", "ultrabook", "macbook"],
+    desktop: ["desktop", "pc", "computer", "workstation"],
+    keyboard: ["keyboard"],
+    mouse: ["mouse"],
+    printer: ["printer"],
+    server: ["server"],
+    storage: ["ssd", "hdd", "storage", "nas"],
+    network: ["router", "switch", "wifi", "network", "access point"]
+  };
+
+  const keywords = categoryMap[requestedCategory] || [requestedCategory];
+  return keywords.some((keyword) => haystack.includes(keyword));
+}
+
 function scoreProduct(product, filters) {
   const text = productText(product);
   let score = 0;
@@ -210,7 +249,7 @@ function scoreProduct(product, filters) {
 
   for (const s of filters.sizes) {
     if (text.includes(`${s} inch`) || text.includes(`${s}"`) || text.includes(`${s} in`)) score += 10;
-    if (text.includes(s)) score += 3;
+    if (text.includes(s)) score += 2;
   }
 
   for (const hz of filters.refreshRates) {
@@ -277,7 +316,7 @@ function mapClientProducts(rows, limit) {
     price: product.price || product.regular_price || "",
     currency: product.currency || "",
     link: product.permalink || "",
-    image: product.images && product.images[0] ? product.images[0].src : "https://via.placeholder.com/120?text=Product",
+    image: product.images && pրդuct.images[0] ? product.images[0].src : "https://via.placeholder.com/120?text=Product",
     stockStatus: product.stock_status || "unknown"
   }));
 }
@@ -285,29 +324,26 @@ function mapClientProducts(rows, limit) {
 function needsClarifyingQuestion(filters, moreIntent) {
   if (moreIntent) return false;
   if (filters.exactModel) return false;
-  if (filters.brand && (filters.specHints.length || filters.sizes.length || filters.refreshRates.length || filters.ram.length || filters.storage.length || filters.budget)) return false;
   if (filters.budget) return false;
   if (filters.sizes.length) return false;
   if (filters.refreshRates.length) return false;
   if (filters.ram.length) return false;
   if (filters.storage.length) return false;
+  if (filters.brand) return false;
   if (filters.specHints.length) return false;
-
   return true;
 }
 
-function buildClarifyingQuestion(lang, text) {
-  const t = normalizeText(text);
-
-  if (/monitor|display|screen/.test(t)) {
+function buildClarifyingQuestion(lang, requestedCategory) {
+  if (requestedCategory === "monitor") {
     return lang === "ar"
-      ? "أكيد. ما الحجم أو الاستخدام الذي تريده للشاشة؟ مثلا مكتبي أو ألعاب، وهل لديك ميزانية محددة؟"
-      : "Sure. What monitor size or use case do you want, such as office or gaming, and do you have a budget in mind?";
+      ? "أكيد. ما الحجم أو الاستخدام الذي تريده للشاشة، مثل مكتب أو ألعاب، وهل لديك ميزانية محددة؟"
+      : "Sure. What monitor size or use case do you want, like office or gaming, and do you have a budget in mind?";
   }
 
-  if (/laptop|notebook/.test(t)) {
+  if (requestedCategory === "laptop") {
     return lang === "ar"
-      ? "أكيد. هل تريده للعمل أم للألعاب، وما الميزانية أو العلامة التجارية التي تفضلها؟"
+      ? "أكيد. هل تريده للعمل أم للألعاب، وهل لديك ميزانية أو علامة تجارية مفضلة؟"
       : "Sure. Is it for business or gaming, and do you have a budget or preferred brand?";
   }
 
@@ -316,7 +352,7 @@ function buildClarifyingQuestion(lang, text) {
     : "Sure. What brand, model, specs, or budget are you looking for?";
 }
 
-function buildSystemPrompt(lang, productList, hasResults, totalMatches, moreIntent) {
+function buildSystemPrompt(lang, productList, totalMatches, moreIntent, requestedCategory) {
   const replyLanguage = lang === "ar" ? "Arabic" : "English";
 
   return `
@@ -327,13 +363,13 @@ Rules:
 - Only talk about products that exist in the provided store results
 - Never invent products, model names, brands, specs, prices, or links
 - Never recommend outside products
+- Never switch to a different category than the customer's requested category
+- If the customer asked for ${requestedCategory || "a product"}, only discuss that category
 - Keep the reply short and sales-helpful
 - Let the UI display product cards
 - Do not paste raw links
-- Do not claim "only these products exist" unless the server explicitly says total match count is final
 - If the customer asked for more options, acknowledge that politely
-- If results exist, summarize briefly and invite the customer to choose
-- If no exact results exist, apologize briefly and ask for a different brand, model, spec, or budget
+- Do not say these are the only products in the store unless the server explicitly says so
 
 Store result count:
 ${totalMatches}
@@ -341,8 +377,11 @@ ${totalMatches}
 More intent:
 ${moreIntent ? "yes" : "no"}
 
+Requested category:
+${requestedCategory || "not explicit"}
+
 Store results:
-${hasResults ? productList : "No matching products found in store."}
+${productList}
 `.trim();
 }
 
@@ -377,34 +416,49 @@ app.post("/chat", async (req, res) => {
     }
 
     if (needsClarifyingQuestion(filters, moreIntent)) {
-      const reply = buildClarifyingQuestion(lang, userMessage);
+      const reply = buildClarifyingQuestion(lang, filters.requestedCategory);
       history.push({ role: "assistant", content: reply });
       conversations[userId] = trimConversation(history);
       return res.json({ reply, language: lang, showProducts: false, products: [] });
     }
 
     const products = await fetchAllProducts();
-    const ranked = rankProducts(products, filters);
-    const totalMatches = ranked.length;
 
+    const categoryLockedProducts = filters.requestedCategory
+      ? products.filter((product) => productMatchesCategory(product, filters.requestedCategory))
+      : products;
+
+    const ranked = rankProducts(categoryLockedProducts, filters);
+    const totalMatches = ranked.length;
     const limit = moreIntent ? 6 : 3;
     const topResults = ranked.slice(0, limit);
 
     if (!topResults.length) {
-      const reply = lang === "ar"
-        ? "عذراً، لم أجد منتجاً مطابقاً في مخزوننا الحالي. هل تريد علامة تجارية أخرى أو مواصفات أو ميزانية مختلفة؟"
-        : "Sorry, I could not find a matching product in our current catalog. Would you like another brand, spec, or budget?";
+      const reply = filters.requestedCategory
+        ? (lang === "ar"
+            ? `عذراً، لم أجد منتجاً مطابقاً ضمن فئة ${filters.requestedCategory} في مخزوننا الحالي.`
+            : `Sorry, I could not find a matching ${filters.requestedCategory} in our current catalog.`)
+        : (lang === "ar"
+            ? "عذراً، لم أجد منتجاً مطابقاً في مخزوننا الحالي. هل تريد علامة تجارية أو مواصفات أو ميزانية مختلفة؟"
+            : "Sorry, I could not find a matching product in our current catalog. Would you like another brand, spec, or budget?");
+
       history.push({ role: "assistant", content: reply });
       conversations[userId] = trimConversation(history);
-      return res.json({ reply, language: lang, showProducts: false, products: [] });
+
+      return res.json({
+        reply,
+        language: lang,
+        showProducts: false,
+        products: []
+      });
     }
 
     const prompt = buildSystemPrompt(
       lang,
       buildShortProductList(topResults, limit),
-      true,
       totalMatches,
-      moreIntent
+      moreIntent,
+      filters.requestedCategory
     );
 
     const completion = await openai.chat.completions.create({
