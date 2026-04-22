@@ -128,15 +128,20 @@ ${smartProductList}
   ...conversations[userId]
 ]
 const aiText = completion.choices[0].message.content;
+
+// ✅ اینجا اضافه کن
 const buyingIntent = /buy|purchase|yes|ok|sure|interested/i.test(userMessage);
 
 const aiSuggesting = /recommend|suggest|option|perfect|best|good choice/i.test(aiText);
 
 const showProducts = buyingIntent || aiSuggesting;
-const showProducts =
-/recommend|suggest|option|perfect|best|good choice|buy|purchase|yes|ok|sure|interested/i.test(aiText)
-||
-/buy|purchase|yes|ok|sure|interested/i.test(userMessage);
+
+// ✅ اینجا اضافه کن
+let finalProducts = products;
+
+if (buyingIntent) {
+  finalProducts = products.slice(0, 2);
+}
 
 conversations[userId].push({
   role: "assistant",
@@ -146,7 +151,7 @@ conversations[userId].push({
 res.json({
   reply: aiText,
   showProducts: showProducts,
-  products: products.map(p => ({
+  products: finalProducts.map(p => ({
     name: p.name,
     price: p.price || p.regular_price || p.sale_price || "",
     link: p.permalink,
