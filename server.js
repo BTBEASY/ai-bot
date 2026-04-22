@@ -176,7 +176,7 @@ if (category) {
     p.name.toLowerCase().includes(category)
   );
 }
-    let finalProducts = scoredProducts.slice(0, 3);
+    finalProducts = scoredProducts.slice(0, 3);
 
 // ✅ ذخیره مکالمه
 conversations[userId].push({
