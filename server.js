@@ -128,7 +128,11 @@ ${smartProductList}
   ...conversations[userId]
 ]
 const aiText = completion.choices[0].message.content;
+const buyingIntent = /buy|purchase|yes|ok|sure|interested/i.test(userMessage);
 
+const aiSuggesting = /recommend|suggest|option|perfect|best|good choice/i.test(aiText);
+
+const showProducts = buyingIntent || aiSuggesting;
 const showProducts =
 /recommend|suggest|option|perfect|best|good choice|buy|purchase|yes|ok|sure|interested/i.test(aiText)
 ||
