@@ -131,6 +131,7 @@ ${smartProductList}
 
 // ✅ متن AI
 const aiText = completion.choices[0].message.content;
+    
 
 // ✅ intent
 const buyingIntent = /buy|purchase|yes|ok|sure|interested/i.test(userMessage);
@@ -138,7 +139,14 @@ const aiSuggesting = /recommend|suggest|option|perfect|best|good choice/i.test(a
 const showProducts = buyingIntent || aiSuggesting;
 
 // ✅ کلمات کاربر
-const userMsgLower = userMessage.toLowerCase();
+const text = userMessage.toLowerCase();
+
+let category = null;
+
+if (text.includes("laptop")) category = "laptop";
+else if (text.includes("monitor")) category = "monitor";
+else if (text.includes("keyboard")) category = "keyboard";
+else if (text.includes("mouse")) category = "mouse";
 const keywords = userMsgLower.split(" ");
 
 // ✅ اسکور محصولات
@@ -161,7 +169,14 @@ let scoredProducts = products.map(p => {
 scoredProducts.sort((a, b) => b.score - a.score);
 
 // ✅ انتخاب بهترین‌ها
-let finalProducts = scoredProducts.slice(0, 3);
+let finalProducts = products;
+
+if (category) {
+  finalProducts = products.filter(p =>
+    p.name.toLowerCase().includes(category)
+  );
+}
+    let finalProducts = scoredProducts.slice(0, 3);
 
 // ✅ ذخیره مکالمه
 conversations[userId].push({
@@ -175,7 +190,7 @@ res.json({
   showProducts: showProducts,
   products: finalProducts.map(p => ({
     name: p.name,
-    price: p.price || p.regular_price || p.sale_price || "",
+    price: p.price || p.regular_price || "",
     link: p.permalink,
     image: (p.images && p.images[0] && p.images[0].src)
       ? p.images[0].src
