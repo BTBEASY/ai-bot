@@ -423,10 +423,21 @@ app.post("/chat", async (req, res) => {
 
     const searchQuery = buildSearchQuery(userMessage, category, brand, useCase);
 
-    const [products, siteKnowledge] = await Promise.all([
-      fetchProducts(searchQuery),
-      fetchSiteKnowledge()
-    ]);
+   const [primaryProducts, siteKnowledge] = await Promise.all([
+  fetchProducts(searchQuery),
+  fetchSiteKnowledge()
+]);
+
+let products = primaryProducts;
+
+if ((!products || products.length === 0) && category) {
+  products = await fetchProducts(category);
+}
+
+if ((!products || products.length === 0) && brand) {
+  products = await fetchProducts(brand);
+}
+
 
     const scoredProducts = scoreProducts(products, userMessage);
     const { exact, near } = splitProductsByBudget(scoredProducts, budget);
