@@ -130,7 +130,9 @@ ${smartProductList}
 const aiText = completion.choices[0].message.content;
 
 const showProducts =
-/recommend|suggest|option|perfect|best|good choice/i.test(aiText);
+/recommend|suggest|option|perfect|best|good choice|buy|purchase|yes|ok|sure|interested/i.test(aiText)
+||
+/buy|purchase|yes|ok|sure|interested/i.test(userMessage);
 
 conversations[userId].push({
   role: "assistant",
