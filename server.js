@@ -174,8 +174,13 @@ async function fetchSiteKnowledge() {
 }
 
 function buildSearchQuery(userMessage, category, brand, useCase) {
-  return [userMessage, category, brand, useCase].filter(Boolean).join(" ");
+  if (category && brand) return `${category} ${brand}`;
+  if (category) return category;
+  if (brand) return brand;
+  if (useCase) return useCase;
+  return userMessage;
 }
+
 
 function scoreProducts(products, userMessage) {
   const text = normalizeText(userMessage);
