@@ -440,7 +440,37 @@ if ((!products || products.length === 0) && brand) {
 
 
     const scoredProducts = scoreProducts(products, userMessage);
-    const { exact, near } = splitProductsByBudget(scoredProducts, budget);
+    function splitProductsByBudget(products, budget) {
+  const usable = products.filter((p) => p.score > 0);
+
+  if (!budget) {
+    return {
+      exact: usable,
+      near: []
+    };
+  }
+
+  const exact = [];
+  const near = [];
+
+  for (const product of usable) {
+    const price = Number(product.price || product.regular_price || 0);
+
+    if (!price) {
+      near.push(product);
+      continue;
+    }
+
+    if (price <= budget) {
+      exact.push(product);
+    } else if (price <= budget * 1.25) {
+      near.push(product);
+    }
+  }
+
+  return { exact, near };
+}
+
 
     const exactProducts = exact.slice(0, 2);
     const nearProducts = near.slice(0, 2);
