@@ -127,27 +127,28 @@ ${smartProductList}
   { role: "system", content: prompt },
   ...conversations[userId]
 ]
-      const aiText = completion.choices[0].message.content;
+const aiText = completion.choices[0].message.content;
 
 const showProducts =
-  /recommend|suggest|option|perfect|best|good choice/i.test(aiText);
-    });
+/recommend|suggest|option|perfect|best|good choice/i.test(aiText);
+
 conversations[userId].push({
   role: "assistant",
-  content: completion.choices[0].message.content
+  content: aiText
 });
- res.json({
-      reply: aiText,
-      showProducts: showProducts,
-      products: products.map(p => ({
-        name: p.name,
-        price: p.price || p.regular_price || p.sale_price || "",
-        link: p.permalink,
-        image: (p.images && p.images[0] && p.images[0].src)
-          ? p.images[0].src
-          : "https://via.placeholder.com/80"
-      }))
-    });
+
+res.json({
+  reply: aiText,
+  showProducts: showProducts,
+  products: products.map(p => ({
+    name: p.name,
+    price: p.price || p.regular_price || p.sale_price || "",
+    link: p.permalink,
+    image: (p.images && p.images[0] && p.images[0].src)
+      ? p.images[0].src
+      : "https://via.placeholder.com/80"
+  }))
+});
 
   } catch (err) {
     console.error("ERROR:", err.message);
