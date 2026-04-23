@@ -320,6 +320,51 @@ function mapClientProducts(rows, limit) {
     stockStatus: product.stock_status || "unknown"
   }));
 }
+function getCardLimit(count) {
+  if (count <= 0) return 0;
+  if (count === 1) return 1;
+  if (count === 2) return 2;
+  return 3;
+}
+
+function buildReplyText(lang, count, resultType) {
+  if (lang === "ar") {
+    if (count === 0) {
+      return "عذراً، فعلاً محصول مرتبطی در فروشگاه پیدا نکردم.";
+    }
+
+    if (resultType === "fallback") {
+      if (count === 1) {
+        return "تطابق دقیق پیدا نکردم، اما نزدیک‌ترین گزینه موجود در فروشگاه را پیدا کردم.";
+      }
+      return `تطابق دقیق پیدا نکردم، اما ${count} گزینه نزدیک از فروشگاه پیدا کردم.`;
+    }
+
+    if (count === 1) {
+      return "یک گزینه مناسب از فروشگاه پیدا کردم.";
+    }
+
+    return `${count} گزینه مناسب از فروشگاه پیدا کردم.`;
+  }
+
+  if (count === 0) {
+    return "Sorry, I could not find a relevant product in our store right now.";
+  }
+
+  if (resultType === "fallback") {
+    if (count === 1) {
+      return "I could not find an exact match, but I found the closest available option from our store.";
+    }
+    return `I could not find an exact match, but I found ${count} close options from our store.`;
+  }
+
+  if (count === 1) {
+    return "I found one suitable option from our store.";
+  }
+
+  return `I found ${count} suitable options from our store.`;
+}
+
 
 function needsClarifyingQuestion(filters, moreIntent) {
   if (moreIntent) return false;
