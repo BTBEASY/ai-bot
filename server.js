@@ -316,7 +316,7 @@ function mapClientProducts(rows, limit) {
     price: product.price || product.regular_price || "",
     currency: product.currency || "",
     link: product.permalink || "",
-    image: product.images && pրդuct.images[0] ? product.images[0].src : "https://via.placeholder.com/120?text=Product",
+    image: product.images && product.images[0] ? product.images[0].src : "https://via.placeholder.com/120?text=Product",
     stockStatus: product.stock_status || "unknown"
   }));
 }
