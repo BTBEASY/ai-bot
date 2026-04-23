@@ -407,6 +407,12 @@ Rules:
 - Reply only in ${replyLanguage}
 - Only talk about products that exist in the provided store results
 - Never invent products, model names, brands, specs, prices, or links
+- Do not list product names, specifications, prices, or links in the chat reply
+- Only give a short summary
+- The UI will display the product cards
+- Make sure your text matches the number of products provided by the server
+- If one product is provided, speak in singular
+- If multiple products are provided, speak in plural
 - Never recommend outside products
 - Never switch to a different category than the customer's requested category
 - If the customer asked for ${requestedCategory || "a product"}, only discuss that category
@@ -415,6 +421,9 @@ Rules:
 - Do not paste raw links
 - If the customer asked for more options, acknowledge that politely
 - Do not say these are the only products in the store unless the server explicitly says so
+- Never write numbered product lists in the reply
+
+
 
 Store result count:
 ${totalMatches}
@@ -474,9 +483,17 @@ app.post("/chat", async (req, res) => {
       : products;
 
     const ranked = rankProducts(categoryLockedProducts, filters);
-    const totalMatches = ranked.length;
-    const limit = moreIntent ? 6 : 3;
-    const topResults = ranked.slice(0, limit);
+const totalMatches = ranked.length;
+
+const exactResults = ranked.filter((row) => row.score >= 12);
+const fallbackResults = ranked.filter((row) => row.score > 0);
+
+const finalResults = exactResults.length > 0 ? exactResults : fallbackResults;
+const resultType = exactResults.length > 0 ? "exact" : "fallback";
+
+const cardLimit = moreIntent ? Math.min(finalResults.length, 6) : getCardLimit(finalResults.length);
+const topResults = finalResults.slice(0, cardLimit);
+
 
     if (!topResults.length) {
       const reply = filters.requestedCategory
@@ -498,13 +515,14 @@ app.post("/chat", async (req, res) => {
       });
     }
 
-    const prompt = buildSystemPrompt(
-      lang,
-      buildShortProductList(topResults, limit),
-      totalMatches,
-      moreIntent,
-      filters.requestedCategory
-    );
+   const prompt = buildSystemPrompt(
+  lang,
+  buildShortProductList(topResults, cardLimit),
+  totalMatches,
+  moreIntent,
+  filters.requestedCategory
+);
+
 
     const completion = await openai.chat.completions.create({
       model: OPENAI_MODEL,
@@ -515,21 +533,22 @@ app.post("/chat", async (req, res) => {
       ]
     });
 
-    const reply =
-      completion?.choices?.[0]?.message?.content?.trim() ||
-      (lang === "ar"
-        ? "وجدت لك بعض الخيارات المناسبة من متجرنا."
-        : "I found some suitable options from our store.");
+    const aiReply = completion?.choices?.[0]?.message?.content?.trim();
+const reply = aiReply || buildReplyText(lang, topResults.length, resultType);
+
 
     history.push({ role: "assistant", content: reply });
     conversations[userId] = trimConversation(history);
 
-    return res.json({
-      reply,
-      language: lang,
-      showProducts: true,
-      products: mapClientProducts(topResults, limit)
-    });
+  return res.json({
+  reply,
+  language: lang,
+  showProducts: topResults.length > 0,
+  products: mapClientProducts(topResults, cardLimit),
+  totalFound: finalResults.length,
+  resultType
+});
+
   } catch (error) {
     console.error("CHAT ERROR:", error.response?.data || error.message);
     return res.status(500).json({
